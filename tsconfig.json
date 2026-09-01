@@ -7,6 +7,8 @@
     "rootDir": "src",
     "outDir": "lib",
     "declaration": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "sourceMap": true,
     "strict": true,
     "skipLibCheck": true,
@@ -14,5 +16,15 @@
     "isolatedModules": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"]
+  "include": [
+    "src/index.ts",
+    "src/invariant.ts",
+    "src/text.ts",
+    "src/mesh-frame.ts",
+    "src/mesh-lineage.ts",
+    "src/spawn-meta.ts"
+  ],
+  "exclude": [
+    "src/client"
+  ]
 }
