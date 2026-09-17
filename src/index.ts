@@ -47,7 +47,7 @@ import type { CoordinatorMessageSource, SubagentDescendantListEntry } from '@dee
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { SessionId, type AgentCancelCause } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
+import { readPersistedEvents, readPersistedParent, type PersistenceReader } from './persistence-read.ts'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import { frameMeshMessage } from './mesh-frame.ts'
@@ -270,12 +270,12 @@ export function apply(ctx: Context, config: {
   const durableParentOf = async (id: SessionId, signal: AbortSignal): Promise<SessionId | undefined> => {
     const live = ctx.sessions.get(id)
     if (live !== undefined) return live.header.parentSession
-    const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
+    const persistence = ctx.get('sessionPersistence') as PersistenceReader | undefined
     if (persistence === undefined) return undefined
     try {
-      return (await persistence.inspect(id, signal)).meta.parentSession
+      return await readPersistedParent(persistence, id, signal)
     } catch {
-      return undefined // inspect threw (unknown or corrupt id), or persistence absent
+      return undefined // unknown/corrupt id, or persistence read failed
     }
   }
 
@@ -304,10 +304,10 @@ export function apply(ctx: Context, config: {
     scannedParents.add(parentId)
     let events: readonly SessionEvent[] | undefined = ctx.sessions.get(parentId)?.events
     if (events === undefined) {
-      const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
+      const persistence = ctx.get('sessionPersistence') as PersistenceReader | undefined
       if (persistence === undefined) return
       try {
-        events = (await persistence.inspect(parentId, signal)).events
+        events = await readPersistedEvents(persistence, parentId, signal)
       } catch {
         return // unknown or corrupt id, or persistence read failed
       }
@@ -874,10 +874,10 @@ export function apply(ctx: Context, config: {
       const usageOf = async (id: string): Promise<{ inputTokens: number; outputTokens: number } | undefined> => {
         let events: readonly SessionEvent[] | undefined = ctx.sessions.get(SessionId(id))?.events
         if (events === undefined) {
-          const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
+          const persistence = ctx.get('sessionPersistence') as PersistenceReader | undefined
           if (persistence === undefined) return undefined
           try {
-            events = (await persistence.inspect(SessionId(id), exec.signal)).events
+            events = await readPersistedEvents(persistence, SessionId(id), exec.signal)
           } catch {
             return undefined
           }
@@ -982,11 +982,11 @@ export function apply(ctx: Context, config: {
         // The augmentation types the service as always present, but a
         // deployment may mount no persistence backend; the registry then
         // returns undefined at runtime.
-        const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
+        const persistence = ctx.get('sessionPersistence') as PersistenceReader | undefined
         if (persistence === undefined) {
           throw new Error(`agent_trace: "${args.agent_id}" is not live and no session persistence is mounted; only live agents are readable`)
         }
-        events = (await persistence.inspect(targetId, exec.signal)).events
+        events = await readPersistedEvents(persistence, targetId, exec.signal)
       }
 
       const beforeSeq = args.before_seq
